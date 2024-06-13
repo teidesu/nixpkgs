@@ -69,7 +69,7 @@ let
 
   installGeodata = lib.concatStringsSep "\n" (
     lib.mapAttrsToList (filename: file: ''
-      install -Dm644 ${file} "$out/share/nekoray/${filename}"
+      install -Dm644 ${file} "$install_dir/${filename}"
     '') geodata
   );
 in
@@ -96,11 +96,12 @@ stdenv.mkDerivation (finalAttrs: {
   buildInputs = [
     libsForQt5.qtbase
     libsForQt5.qttools
-    libsForQt5.qtwayland
-    libsForQt5.qtx11extras
     protobuf
     yaml-cpp
     zxing-cpp
+  ] ++ lib.optionals stdenv.isLinux [
+    libsForQt5.qtwayland
+    libsForQt5.qtx11extras
   ];
 
   # NKR_PACKAGE makes sure the app uses the user's config directory to store it's non-static content
@@ -110,22 +111,30 @@ stdenv.mkDerivation (finalAttrs: {
   installPhase = ''
     runHook preInstall
 
-    install -Dm755 nekoray "$out/share/nekoray/nekoray"
-    mkdir -p "$out/bin"
-    ln -s "$out/share/nekoray/nekoray" "$out/bin"
+    ${if stdenv.isLinux then ''
+      install_dir="$out/share/nekoray"
+
+      install -Dm755 nekoray "$out/share/nekoray/nekoray"
+      mkdir -p "$out/bin"
+      ln -s "$out/share/nekoray/nekoray" "$out/bin"
+      install -Dm644 "$src/res/public/nekoray.png" "$out/share/icons/hicolor/256x256/apps/nekoray.png"
+    '' else ''
+      install_dir="$out/Applications/nekoray.app/Contents/MacOS"
+
+      mkdir -p $out/Applications
+      cp -r nekoray.app $out/Applications
+    ''}
 
     # nekoray looks for other files and cores in the same directory it's located at
-    ln -s ${finalAttrs.passthru.nekoray-core}/bin/nekoray_core "$out/share/nekoray/nekoray_core"
-    ln -s ${finalAttrs.passthru.nekobox-core}/bin/nekobox_core "$out/share/nekoray/nekobox_core"
+    ln -s ${finalAttrs.passthru.nekoray-core}/bin/nekoray_core "$install_dir/nekoray_core"
+    ln -s ${finalAttrs.passthru.nekobox-core}/bin/nekobox_core "$install_dir/nekobox_core"
 
     ${installGeodata}
-
-    install -Dm644 "$src/res/public/nekoray.png" "$out/share/icons/hicolor/256x256/apps/nekoray.png"
 
     runHook postInstall
   '';
 
-  desktopItems = [
+  desktopItems = lib.optionals stdenv.isLinux [
     (makeDesktopItem {
       name = "nekoray";
       desktopName = "nekoray";
@@ -157,6 +166,5 @@ stdenv.mkDerivation (finalAttrs: {
     license = lib.licenses.gpl3Plus;
     mainProgram = "nekoray";
     maintainers = with lib.maintainers; [ tomasajt ];
-    platforms = lib.platforms.linux;
   };
 })
